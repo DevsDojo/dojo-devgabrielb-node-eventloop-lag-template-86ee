@@ -1,0 +1,88 @@
+name: Challenge Validator
+on: [pull_request]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      # 1. Checkout User Code
+      - name: Checkout User Code
+        uses: actions/checkout@v3
+
+      # 2. Gera Token via GitHub App (Substitui o PAT)
+      - name: Generate App Token
+        id: generate_token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }} # Assume que os assets estão na mesma org/user
+
+      # 3. Baixa o GABARITO (Assets Privados)
+      - name: Checkout Judge Assets
+        uses: actions/checkout@v3
+        with:
+          repository: DevArena/challenge-assets
+          token: ${{ steps.generate_token.outputs.token }}
+          path: temp_judge_assets
+
+      # 4. Monta o ambiente
+      - name: Setup Environment
+        run: |
+          echo "🔧 Injetando sistema de validação..."
+          mkdir -p _system
+          cp -r temp_judge_assets/challenges/node-eventloop-lag/_system/* ./_system/
+          
+          mkdir -p .judge
+          cp -r temp_judge_assets/common/* .judge/
+
+      # 5. Valida a RFC
+      - name: Validate RFC
+        run: node .judge/rfc-validator.js ./docs/RFC.md
+
+      # 6. Roda o Orquestrador
+      - name: Run Orchestrator
+        id: orchestrator
+        run: |
+          chmod +x ./_system/orchestrator.sh
+          ./_system/orchestrator.sh
+
+      # 7. Comenta no PR (Substitui Report API)
+      - name: Comment on PR
+        if: always()
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            let report = { status: 'UNKNOWN', steps: [] };
+            try {
+              if (fs.existsSync('report.json')) {
+                report = JSON.parse(fs.readFileSync('report.json', 'utf8'));
+              }
+            } catch (e) {
+              console.log('Error reading report.json', e);
+            }
+
+            const statusEmoji = report.status === 'PASSED' ? '✅' : '❌';
+            const body = `### ${statusEmoji} Challenge Validation Results\n\n**Status**: ${report.status}\n\nRunning checks...\n` +
+              report.steps.map(s => `- ${s}`).join('\n'); // Adjust based on report.json structure if needed
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            })
+
+      # 8. Reporta (Desativado temporariamente)
+      # - name: Report Results
+      #   if: always()
+      #   env:
+      #     PLATFORM_API_URL: ${{ secrets.PLATFORM_API_URL }}
+      #     PLATFORM_SECRET: ${{ secrets.PLATFORM_SECRET }}
+      #   run: node .judge/reporter.js
