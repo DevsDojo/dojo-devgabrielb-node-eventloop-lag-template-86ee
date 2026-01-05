@@ -27,7 +27,7 @@ jobs:
       - name: Checkout Judge Assets
         uses: actions/checkout@v3
         with:
-          repository: DevArena/challenge-assets
+          repository: ${{ secrets.CHALLENGE_ASSETS_REPOSITORY }}
           token: ${{ steps.generate_token.outputs.token }}
           path: temp_judge_assets
 
