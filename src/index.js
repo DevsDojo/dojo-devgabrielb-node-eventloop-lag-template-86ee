@@ -26,7 +26,6 @@ app.get('/feed', async (req, res) => {
 
         res.json({ items: feed.length, feed });
     } catch (err) {
-        console.error(err);
         res.status(500).send('Server Error');
     } finally {
         client.release();
